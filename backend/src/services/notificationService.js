@@ -69,7 +69,7 @@ Return JSON:
 }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: config.gemini?.generationModels?.[0] || 'gemini-3.5-flash',
       contents: promptText
     });
 

@@ -1,11 +1,17 @@
 import path from 'path';
 import { getDB, saveDB } from '../storage/db.js';
+import { getPool, isMySQL } from '../config/db.js';
 import { extractPagesFromPDFBuffer, generateOverlappingChunks } from '../services/pdfService.js';
 import { generateSemanticEmbedding } from '../services/embeddingService.js';
 import { answerRAGQuery } from '../services/ragService.js';
 
-export const getDocuments = (req, res, next) => {
+export const getDocuments = async (req, res, next) => {
   try {
+    if (isMySQL()) {
+      const pool = getPool();
+      const [docs] = await pool.query('SELECT * FROM documents ORDER BY created_at DESC');
+      return res.json({ success: true, data: docs || [] });
+    }
     const db = getDB();
     res.json({ success: true, data: db.documents || [] });
   } catch (error) {
@@ -78,6 +84,31 @@ export const uploadDocument = async (req, res, next) => {
       created_at: new Date().toISOString()
     };
 
+    if (isMySQL()) {
+      const pool = getPool();
+      await pool.query(
+        'INSERT INTO documents (id, title, file_name, file_size, uploaded_by, chunk_count) VALUES (?, ?, ?, ?, ?, ?)',
+        [newDoc.id, newDoc.title, newDoc.file_name, newDoc.file_size, newDoc.uploaded_by, newDoc.chunk_count]
+      );
+      for (const chk of newChunks) {
+        const rawVec = chk.embedding?.values || (Array.isArray(chk.embedding) ? chk.embedding : []);
+        await pool.query(
+          'INSERT INTO document_chunks (id, document_id, chunk_index, content, page_number, vector_embedding, embedding_model, embedding_dimension, embedding_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            chk.id,
+            chk.document_id,
+            chk.chunk_index,
+            chk.content,
+            chk.page_number || 1,
+            JSON.stringify(rawVec),
+            chk.embedding?.model || 'gemini-embedding-2',
+            chk.embedding?.dimension || 768,
+            chk.embedding?.version || 'v1'
+          ]
+        );
+      }
+    }
+
     db.documents.push(newDoc);
     db.document_chunks.push(...newChunks);
     saveDB(db);
@@ -107,11 +138,16 @@ export const queryRAG = async (req, res, next) => {
   }
 };
 
-export const deleteDocument = (req, res, next) => {
+export const deleteDocument = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const db = getDB();
 
+    if (isMySQL()) {
+      const pool = getPool();
+      await pool.query('DELETE FROM documents WHERE id = ?', [id]);
+    }
+
+    const db = getDB();
     db.documents = (db.documents || []).filter(d => d.id !== id);
     db.document_chunks = (db.document_chunks || []).filter(c => c.document_id !== id);
     saveDB(db);

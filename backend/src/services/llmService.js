@@ -64,7 +64,7 @@ ${formattedDocContext ? formattedDocContext : '=== NO RELEVANT COLLEGE DOCUMENTS
     let replyText = '';
 
     // Attempt generation with models in priority order
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = config.gemini?.generationModels || ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
     let lastError = null;
 
     for (const modelName of modelsToTry) {
@@ -183,7 +183,7 @@ Return ONLY a raw valid JSON object (no markdown code blocks, no extra text) mat
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = config.gemini?.generationModels || ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
     let rawText = '';
 
     for (const modelName of modelsToTry) {

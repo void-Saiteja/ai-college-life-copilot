@@ -60,6 +60,13 @@ export const config = {
   adminSecret: process.env.ADMIN_SECRET || 'dev_admin_secret_key_2026',
   geminiApiKey: process.env.GEMINI_API_KEY || process.env.AI_API_KEY || '',
   aiApiKey: process.env.AI_API_KEY || '',
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY || process.env.AI_API_KEY || '',
+    generationModels: ['gemini-3.5-flash', 'gemini-3.5-flash-lite'],
+    embeddingModel: 'gemini-embedding-2',
+    embeddingDimension: 768,
+    embeddingVersion: 'v1'
+  },
   rateLimit: {
     generalMax: parseInt(process.env.RATE_LIMIT_MAX || (nodeEnv === 'production' ? '300' : '10000'), 10),
     authMax: parseInt(process.env.AUTH_RATE_LIMIT_MAX || (nodeEnv === 'production' ? '60' : '5000'), 10),

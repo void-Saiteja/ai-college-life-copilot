@@ -152,6 +152,9 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     content TEXT NOT NULL,
     page_number INT DEFAULT 1,
     vector_embedding JSON DEFAULT NULL,
+    embedding_model VARCHAR(64) DEFAULT NULL,
+    embedding_dimension INT DEFAULT NULL,
+    embedding_version VARCHAR(32) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
     INDEX idx_chunks_document (document_id)

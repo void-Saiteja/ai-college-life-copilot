@@ -123,7 +123,7 @@ Answer the following 5 questions concisely and structurally:
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = config.gemini?.generationModels || ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
 
     for (const modelName of modelsToTry) {
       try {

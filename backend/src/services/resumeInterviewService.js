@@ -205,7 +205,7 @@ Provide your review as clean JSON with this exact structure:
   ]
 }`;
 
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = config.gemini?.generationModels || ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
     for (const modelName of modelsToTry) {
       try {
         const response = await ai.models.generateContent({
@@ -391,7 +391,7 @@ Return JSON in this exact format:
   "preparation_tips": "Guidance on how the student should structure their response."
 }`;
 
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = config.gemini?.generationModels || ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
     for (const modelName of modelsToTry) {
       try {
         const response = await ai.models.generateContent({
@@ -557,7 +557,7 @@ Return JSON strictly in this format:
   "follow_up_tip": "One actionable tip to improve in this interview category..."
 }`;
 
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = config.gemini?.generationModels || ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
     for (const modelName of modelsToTry) {
       try {
         const response = await ai.models.generateContent({

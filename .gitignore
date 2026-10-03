@@ -13,4 +13,7 @@ logs
 *.log
 .DS_Store
 backend/data/db.json
-
+backups/
+backend/backups/
+*.bak
+*.bak.*

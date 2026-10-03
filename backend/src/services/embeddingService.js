@@ -2,42 +2,60 @@ import { GoogleGenAI } from '@google/genai';
 import { config } from '../config/env.js';
 
 /**
- * Generates a real numerical semantic embedding vector using Google Gemini's text-embedding-004 model.
+ * Generates a real numerical semantic embedding vector using Google Gemini's gemini-embedding-2 model.
  * Enforces production safety: In production, missing key or API failures throw explicit errors instead of silently creating fake embeddings.
  * @param {string} text - Input text string
- * @returns {Promise<{ values: number[], provider: string, model: string, dimension: number }>}
+ * @returns {Promise<{ values: number[], provider: string, model: string, dimension: number, version: string }>}
  */
 export async function generateSemanticEmbedding(text) {
   const isProd = config.nodeEnv === 'production' || process.env.STRICT_EMBEDDINGS === 'true';
+  const targetModel = config.gemini?.embeddingModel || 'gemini-embedding-2';
+  const targetDim = config.gemini?.embeddingDimension || 768;
+  const targetVersion = config.gemini?.embeddingVersion || 'v1';
 
   if (!text || typeof text !== 'string' || text.trim() === '') {
     return {
-      values: new Array(768).fill(0),
+      values: new Array(targetDim).fill(0),
       provider: 'google',
-      model: 'text-embedding-004',
-      dimension: 768
+      model: targetModel,
+      dimension: targetDim,
+      version: targetVersion
     };
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || config.geminiApiKey;
+  const apiKey = process.env.GEMINI_API_KEY || config.gemini?.apiKey || config.geminiApiKey;
   const hasValidKey = apiKey && apiKey !== 'mock_key' && apiKey !== 'your_gemini_api_key_here' && apiKey.trim() !== '';
 
   if (hasValidKey) {
     try {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.embedContent({
-        model: 'text-embedding-004',
-        contents: text.trim()
+        model: targetModel,
+        contents: text.trim(),
+        config: {
+          outputDimensionality: targetDim
+        }
       });
 
-      if (response && response.embedding && Array.isArray(response.embedding.values)) {
+      const values = response?.embeddings?.[0]?.values || response?.embedding?.values;
+
+      if (Array.isArray(values)) {
+        if (values.length !== targetDim) {
+          throw new Error(`Expected embedding dimension ${targetDim}, but received ${values.length}`);
+        }
+        if (!values.every(Number.isFinite)) {
+          throw new Error('Embedding vector contains non-finite numerical values');
+        }
+
         return {
-          values: response.embedding.values,
+          values,
           provider: 'google',
-          model: 'text-embedding-004',
-          dimension: response.embedding.values.length
+          model: targetModel,
+          dimension: values.length,
+          version: targetVersion
         };
       }
+      throw new Error('Empty or invalid embedding response received from Google Gemini API');
     } catch (err) {
       console.error('[Embedding API Failure]:', err.message || err);
       
@@ -50,7 +68,7 @@ export async function generateSemanticEmbedding(text) {
 
   // In production mode, missing key is a strict error
   if (isProd) {
-    throw new Error('GEMINI_API_KEY is missing. Real Google text-embedding-004 API is required in production.');
+    throw new Error('GEMINI_API_KEY is missing. Real Google gemini-embedding-2 API is required in production.');
   }
 
   // Development-only local fallback with explicit provider metadata notice
@@ -61,7 +79,8 @@ export async function generateSemanticEmbedding(text) {
     values: fallbackValues,
     provider: 'local-fallback',
     model: 'hash-128',
-    dimension: fallbackValues.length
+    dimension: fallbackValues.length,
+    version: 'local'
   };
 }
 

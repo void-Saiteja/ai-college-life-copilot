@@ -693,7 +693,7 @@ Return ONLY valid JSON with this exact structure:
   "caveatsAndLimitations": "Brief note on current data sample size or limitation."
 }`;
 
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = config.gemini?.generationModels || ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
     for (const modelName of modelsToTry) {
       try {
         const response = await ai.models.generateContent({
