@@ -1,3 +1,4 @@
+import fs from 'fs';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -8,6 +9,38 @@ const defaultDevSecret = 'ai_college_copilot_secret_key_jwt_2026';
 if (nodeEnv === 'production' && (!rawJwtSecret || rawJwtSecret === defaultDevSecret)) {
   console.error('[FATAL SECURITY ERROR]: Production environment detected, but JWT_SECRET is unset or using default development fallback secret!');
   throw new Error('FATAL: A strong, unique JWT_SECRET must be configured via environment variables in production.');
+}
+
+function resolveSSLConfig() {
+  if (process.env.DB_SSL !== 'true') {
+    return false;
+  }
+
+  let caCert = undefined;
+  if (process.env.DB_SSL_CA_CERT && process.env.DB_SSL_CA_CERT.trim()) {
+    caCert = process.env.DB_SSL_CA_CERT.trim();
+  } else if (process.env.DB_SSL_CA_PATH && process.env.DB_SSL_CA_PATH.trim()) {
+    try {
+      const caPath = process.env.DB_SSL_CA_PATH.trim();
+      if (fs.existsSync(caPath)) {
+        caCert = fs.readFileSync(caPath, 'utf-8');
+      } else {
+        console.warn(`[SSL Configuration Warning]: CA certificate file not found at path: ${caPath}`);
+      }
+    } catch (err) {
+      console.warn(`[SSL Configuration Warning]: Failed reading CA certificate: ${err.message}`);
+    }
+  }
+
+  const sslOptions = {
+    rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false' ? false : true
+  };
+
+  if (caCert) {
+    sslOptions.ca = caCert;
+  }
+
+  return sslOptions;
 }
 
 export const config = {
@@ -29,6 +62,6 @@ export const config = {
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'ai_college_copilot',
-    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
+    ssl: resolveSSLConfig()
   }
 };

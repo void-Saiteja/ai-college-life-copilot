@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+ca.pem
+backend/.env
+backend/.env.*
+backend/ca.pem
+node_modules
+*/node_modules
+dist
+*/dist
+.vscode
+.idea
+*.log
