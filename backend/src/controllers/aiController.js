@@ -1,11 +1,83 @@
 import { config } from '../config/env.js';
+import { getDB } from '../storage/db.js';
+
+function detectPromptInjection(text) {
+  if (typeof text !== 'string') return false;
+  const lower = text.toLowerCase();
+  const dangerousPatterns = [
+    'ignore previous instructions',
+    'ignore all instructions',
+    'ignore all rules',
+    'reveal system prompt',
+    'reveal the system prompt',
+    'show system prompt',
+    'reveal prompt',
+    'reveal password',
+    'reveal secret',
+    'reveal api key',
+    'show api key',
+    'reveal another student',
+    'reveal other student',
+    'reveal notes of',
+    'bypass security',
+    'jailbreak'
+  ];
+  return dangerousPatterns.some(pattern => lower.includes(pattern));
+}
 
 // Smart rule-based / LLM fallback generator
 export const summarizeNotes = async (req, res, next) => {
   try {
-    const { content, title, course } = req.body;
-    if (!content) {
+    const studentKey = req.user?.studentId || req.user?.id;
+    let { content, title, course, noteId } = req.body;
+
+    // Ownership check if noteId is supplied
+    if (noteId) {
+      const db = getDB();
+      const existing = (db.notes || []).find(n => n.id === noteId);
+      if (!existing) {
+        return res.status(404).json({ success: false, error: 'Note not found' });
+      }
+      const isOwner = existing.student_id === studentKey || (!existing.student_id && studentKey === 'std-1');
+      if (!isOwner) {
+        return res.status(403).json({ success: false, error: 'Access denied: You do not own this note' });
+      }
+      content = content || existing.content;
+      title = title || existing.title;
+      course = course || existing.course;
+    }
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
       return res.status(400).json({ success: false, error: 'Content is required for AI summarization' });
+    }
+
+    if (content.length > 50000) {
+      return res.status(400).json({ success: false, error: 'Content exceeds 50,000 characters limit' });
+    }
+
+    // Prompt Injection Defense
+    if (detectPromptInjection(content) || detectPromptInjection(title || '')) {
+      return res.json({
+        success: true,
+        data: {
+          title: title ? title.slice(0, 100) : 'Security Notice',
+          course: course || 'Academic Ethics',
+          wordCount: 15,
+          readingTimeMinutes: 1,
+          summary: 'Institutional Security Protocol: The system prompt, internal application secrets, and peer student records are protected and cannot be disclosed.',
+          keyTakeaways: [
+            '• Adheres to FERPA and academic data privacy standards.',
+            '• Security instructions and configuration parameters are confidential.',
+            '• External instruction overrides are neutralized.'
+          ],
+          flashcards: [
+            { question: 'What is data confidentiality in academic applications?', answer: 'Ensuring student records are segregated and access is restricted exclusively to the authenticated owner.' }
+          ],
+          quiz: [
+            { id: 1, question: 'Are student records shared across user accounts?', options: ['Never - strictly segregated', 'Always shared', 'Publicly accessible', 'Unprotected'], correctAnswer: 0, explanation: 'Enforced via role-based access control and IDOR protections.' }
+          ]
+        }
+      });
     }
 
     // Split sentences for key takeaways extraction
@@ -140,9 +212,21 @@ export const prioritizeTasks = async (req, res, next) => {
 
 export const chatCopilot = async (req, res, next) => {
   try {
-    const { message, context } = req.body;
-    if (!message) {
+    const { message } = req.body;
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ success: false, error: 'Message query is required' });
+    }
+
+    if (message.length > 4000) {
+      return res.status(400).json({ success: false, error: 'Message exceeds maximum limit of 4000 characters' });
+    }
+
+    if (detectPromptInjection(message)) {
+      return res.json({
+        success: true,
+        reply: '🛡️ **Institutional Security Notice**: System prompts, operational directives, and other students\' private academic records are strictly confidential and cannot be revealed or modified.',
+        timestamp: new Date().toISOString()
+      });
     }
 
     const lower = message.toLowerCase();
@@ -173,6 +257,28 @@ export const chatCopilot = async (req, res, next) => {
 export const mealAndBudgetPlanner = async (req, res, next) => {
   try {
     const { budgetRemaining, ingredients = [] } = req.body;
+
+    const numBudget = Number(budgetRemaining);
+    if (!isFinite(numBudget) || numBudget < 0 || numBudget > 1000000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid non-negative budgetRemaining amount is required (0 - 1,000,000)'
+      });
+    }
+
+    if (!Array.isArray(ingredients)) {
+      return res.status(400).json({ success: false, error: 'Ingredients must be an array' });
+    }
+
+    const sanitizedIngredients = ingredients
+      .filter(i => typeof i === 'string')
+      .map(i => i.trim().slice(0, 50))
+      .slice(0, 20);
+
+    const hasInjection = sanitizedIngredients.some(i => detectPromptInjection(i));
+    if (hasInjection) {
+      return res.status(400).json({ success: false, error: 'Invalid ingredient input detected' });
+    }
     
     const mealIdeas = [
       {
@@ -201,7 +307,7 @@ export const mealAndBudgetPlanner = async (req, res, next) => {
     return res.json({
       success: true,
       data: {
-        budgetAdvice: budgetRemaining < 100 
+        budgetAdvice: numBudget < 100 
           ? '⚠️ Budget tight this month! Stick to meal prep and campus dining events.'
           : '👍 Healthy budget margin! Remember to put aside 15% into savings.',
         suggestedMeals: mealIdeas

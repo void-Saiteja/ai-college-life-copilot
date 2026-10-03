@@ -67,9 +67,18 @@ const authLimiter = createRateLimiter({
   message: 'Too many authentication attempts. Please try again after 1 minute.'
 });
 
+const aiLimiter = createRateLimiter({
+  windowMs: config.rateLimit.windowMs,
+  maxRequests: config.nodeEnv === 'production' ? 60 : 3000,
+  message: 'Too many AI requests. Please wait a moment before sending another prompt.'
+});
+
 app.use('/api', generalLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/ai', aiLimiter);
+app.use('/api/chat', aiLimiter);
+app.use('/api/documents/query', aiLimiter);
 
 // Request logger
 app.use((req, res, next) => {

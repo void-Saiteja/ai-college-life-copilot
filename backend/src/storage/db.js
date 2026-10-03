@@ -193,9 +193,9 @@ const initialSeedData = {
   resumes: [],
   career_analysis: [],
   schedule: [
-    { id: '1', course: 'CS 201: Data Structures', room: 'Hall B2', days: ['Mon', 'Wed', 'Fri'], time: '09:00 AM - 10:30 AM', instructor: 'Dr. Alan Turing' },
-    { id: '2', course: 'MATH 220: Calculus III', room: 'Sci 104', days: ['Tue', 'Thu'], time: '11:00 AM - 12:30 PM', instructor: 'Prof. Katherine Johnson' },
-    { id: '3', course: 'CS 340: Database Systems', room: 'Lab 4', days: ['Mon', 'Wed'], time: '02:00 PM - 03:30 PM', instructor: 'Dr. Grace Hopper' }
+    { id: '1', student_id: 'std-1', course: 'CS 201: Data Structures', room: 'Hall B2', days: ['Mon', 'Wed', 'Fri'], time: '09:00 AM - 10:30 AM', instructor: 'Dr. Alan Turing' },
+    { id: '2', student_id: 'std-1', course: 'MATH 220: Calculus III', room: 'Sci 104', days: ['Tue', 'Thu'], time: '11:00 AM - 12:30 PM', instructor: 'Prof. Katherine Johnson' },
+    { id: '3', student_id: 'std-1', course: 'CS 340: Database Systems', room: 'Lab 4', days: ['Mon', 'Wed'], time: '02:00 PM - 03:30 PM', instructor: 'Dr. Grace Hopper' }
   ],
   budget: {
     monthlyTarget: 1200,
@@ -204,6 +204,16 @@ const initialSeedData = {
       { id: '1', title: 'Textbooks & Lab Access', amount: 145.50, category: 'Academic', date: new Date().toISOString().split('T')[0] },
       { id: '2', title: 'Campus Meal Pass', amount: 280.00, category: 'Food', date: new Date().toISOString().split('T')[0] }
     ]
+  },
+  budgets: {
+    'std-1': {
+      monthlyTarget: 1200,
+      currency: '$',
+      expenses: [
+        { id: '1', title: 'Textbooks & Lab Access', amount: 145.50, category: 'Academic', date: new Date().toISOString().split('T')[0] },
+        { id: '2', title: 'Campus Meal Pass', amount: 280.00, category: 'Food', date: new Date().toISOString().split('T')[0] }
+      ]
+    }
   },
   notes: [],
   career_profiles: [],
@@ -231,6 +241,14 @@ export function getDB() {
     if (!Array.isArray(db.interview_questions)) db.interview_questions = [];
     if (!Array.isArray(db.interview_practices)) db.interview_practices = [];
     if (!Array.isArray(db.notifications)) db.notifications = [];
+    if (!Array.isArray(db.notes)) db.notes = [];
+    if (!Array.isArray(db.schedule)) db.schedule = [];
+    if (!db.budgets || typeof db.budgets !== 'object') {
+      db.budgets = {};
+      if (db.budget) {
+        db.budgets['std-1'] = JSON.parse(JSON.stringify(db.budget));
+      }
+    }
     return db;
   } catch (err) {
     return initialSeedData;
