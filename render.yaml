@@ -37,13 +37,12 @@ services:
         sync: false
 
   # Frontend Static Site
-  - type: static
+  - type: web
     name: ai-college-copilot-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    plan: free
-    region: oregon
     routes:
       - type: rewrite
         source: /*
