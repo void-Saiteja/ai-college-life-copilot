@@ -12,7 +12,10 @@ services:
       - key: NODE_ENV
         value: production
       - key: CLIENT_ORIGIN
-        sync: false
+        fromService:
+          name: ai-college-copilot-frontend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
       - key: DB_HOST
         sync: false
       - key: DB_PORT
@@ -49,4 +52,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        sync: false
+        fromService:
+          name: ai-college-copilot-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
