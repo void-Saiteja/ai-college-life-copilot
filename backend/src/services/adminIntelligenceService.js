@@ -186,7 +186,7 @@ export function calculateAdminDashboardStats() {
     documents: {
       totalDocuments,
       totalIndexedChunks,
-      embeddingProvider: 'Google Gemini text-embedding-004',
+      embeddingProvider: `Google Gemini ${config.gemini?.embeddingModel || 'gemini-embedding-2'}`,
       indexingStatus
     }
   };
@@ -749,7 +749,7 @@ export function getAdminDocumentsList() {
       chunkCount: docChunks.length,
       createdAt: doc.created_at,
       embeddingStatus: hasEmbeddings ? 'Indexed' : (docChunks.length > 0 ? 'Partial' : 'Pending'),
-      embeddingModel: 'text-embedding-004',
+      embeddingModel: config.gemini?.embeddingModel || 'gemini-embedding-2',
       provider: 'Google Gemini'
     };
   });

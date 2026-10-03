@@ -1,7 +1,7 @@
 import { retrieveRelevantChunks } from './retrievalService.js';
 
 export async function answerRAGQuery(query) {
-  const threshold = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '0.25');
+  const threshold = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '0.55');
   const topChunks = await retrieveRelevantChunks(query, 3, threshold);
 
   if (!topChunks || topChunks.length === 0) {
