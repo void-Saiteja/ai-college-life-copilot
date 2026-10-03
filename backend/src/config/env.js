@@ -11,6 +11,15 @@ if (nodeEnv === 'production' && (!rawJwtSecret || rawJwtSecret === defaultDevSec
   throw new Error('FATAL: A strong, unique JWT_SECRET must be configured via environment variables in production.');
 }
 
+function normalizeCert(cert) {
+  if (!cert || typeof cert !== 'string') return cert;
+  let clean = cert.trim();
+  if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
+    clean = clean.slice(1, -1);
+  }
+  return clean.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').trim();
+}
+
 function resolveSSLConfig() {
   if (process.env.DB_SSL !== 'true') {
     return false;
@@ -18,12 +27,12 @@ function resolveSSLConfig() {
 
   let caCert = undefined;
   if (process.env.DB_SSL_CA_CERT && process.env.DB_SSL_CA_CERT.trim()) {
-    caCert = process.env.DB_SSL_CA_CERT.trim();
+    caCert = normalizeCert(process.env.DB_SSL_CA_CERT);
   } else if (process.env.DB_SSL_CA_PATH && process.env.DB_SSL_CA_PATH.trim()) {
     try {
       const caPath = process.env.DB_SSL_CA_PATH.trim();
       if (fs.existsSync(caPath)) {
-        caCert = fs.readFileSync(caPath, 'utf-8');
+        caCert = normalizeCert(fs.readFileSync(caPath, 'utf-8'));
       } else {
         console.warn(`[SSL Configuration Warning]: CA certificate file not found at path: ${caPath}`);
       }
