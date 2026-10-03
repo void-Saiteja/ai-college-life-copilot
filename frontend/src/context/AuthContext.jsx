@@ -12,16 +12,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     async function checkAuth() {
       if (!token) {
-        // Default seed demo student user for instant seamless experience
-        setUser({
-          id: 'u-student-1',
-          name: 'Alex Mercer',
-          email: 'alex@student.edu',
-          role: 'STUDENT',
-          studentId: 'std-1',
-          semester: 4,
-          department: 'Computer Science & Engineering'
-        });
+        setUser(null);
         setLoading(false);
         return;
       }
@@ -30,9 +21,15 @@ export function AuthProvider({ children }) {
         const res = await api.get('/auth/me');
         if (res.data.success) {
           setUser(res.data.user);
+        } else {
+          setUser(null);
+          setToken(null);
+          localStorage.removeItem('copilot_token');
         }
       } catch (err) {
-        console.warn('Auth session check notice: Using active session.');
+        setUser(null);
+        setToken(null);
+        localStorage.removeItem('copilot_token');
       } finally {
         setLoading(false);
       }

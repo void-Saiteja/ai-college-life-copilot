@@ -28,21 +28,31 @@ export default function LoginPage() {
   };
 
   const handleDemoStudent = async () => {
+    setError('');
     setEmail('alex@student.edu');
     setPassword('Student@123');
     setSubmitting(true);
     const res = await login('alex@student.edu', 'Student@123');
     setSubmitting(false);
-    if (res.success) navigate('/dashboard');
+    if (res.success) {
+      navigate('/dashboard');
+    } else {
+      setError(res.error);
+    }
   };
 
   const handleDemoAdmin = async () => {
+    setError('');
     setEmail('admin@college.edu');
     setPassword('Admin@123');
     setSubmitting(true);
     const res = await login('admin@college.edu', 'Admin@123');
     setSubmitting(false);
-    if (res.success) navigate('/admin');
+    if (res.success) {
+      navigate('/admin');
+    } else {
+      setError(res.error);
+    }
   };
 
   return (
