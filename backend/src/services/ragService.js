@@ -1,4 +1,5 @@
 import { retrieveRelevantChunks } from './retrievalService.js';
+import { answerAndVerifyDocumentQuery } from './llmService.js';
 
 export async function answerRAGQuery(query) {
   const threshold = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '0.55');
@@ -12,20 +13,47 @@ export async function answerRAGQuery(query) {
     };
   }
 
-  const sources = topChunks.map(c => ({
-    documentTitle: c.documentTitle,
-    pageNumber: c.page_number || 1,
-    similarityScore: Math.round(c.score * 100) / 100,
-    snippet: c.content
-  }));
+  try {
+    const verification = await answerAndVerifyDocumentQuery({
+      query,
+      docChunks: topChunks
+    });
 
-  const combinedContent = topChunks.map(c => c.content).join('\n\n');
+    if (verification && verification.status === 'FOUND' && verification.answer) {
+      const sources = topChunks.map(c => ({
+        documentTitle: c.documentTitle,
+        pageNumber: c.page_number || 1,
+        similarityScore: Math.round(c.score * 100) / 100,
+        snippet: c.content
+      }));
 
-  let answerText = `Based on official document "${sources[0].documentTitle}" (Page ${sources[0].pageNumber}):\n\n${combinedContent}`;
+      return {
+        found: true,
+        answer: verification.answer,
+        sources
+      };
+    }
 
-  return {
-    found: true,
-    answer: answerText,
-    sources
-  };
+    if (verification && verification.isServiceError) {
+      return {
+        found: false,
+        answer: "I could not verify an answer from the uploaded official college documents right now. Please try again later.",
+        sources: []
+      };
+    }
+
+    return {
+      found: false,
+      answer: "I could not find an answer to your query in the uploaded official college documents. Please consult the academic administration office for official guidance.",
+      sources: []
+    };
+
+  } catch (error) {
+    console.error('[RAG Grounding Error]: Failed during answer verification:', error.message || error);
+    return {
+      found: false,
+      answer: "I could not verify an answer from the uploaded official college documents right now. Please try again later.",
+      sources: []
+    };
+  }
 }

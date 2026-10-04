@@ -215,6 +215,139 @@ Return ONLY a raw valid JSON object (no markdown code blocks, no extra text) mat
   return { success: true, data: generateLocalFallbackStudyPlan(context, preferences) };
 }
 
+/**
+ * Verifies document relevance and generates grounded answers using Google Gemini.
+ * Returns { success: true, status: 'FOUND' | 'NOT_FOUND', answer: string }
+ * or { success: false, isServiceError: true, error: string } on service failure.
+ */
+export async function answerAndVerifyDocumentQuery({ query, docChunks = [] }) {
+  const apiKey = process.env.GEMINI_API_KEY || config.geminiApiKey;
+
+  if (!apiKey || apiKey === 'mock_key' || apiKey === 'your_gemini_api_key_here' || apiKey.trim() === '') {
+    return {
+      success: false,
+      isServiceError: true,
+      error: 'Gemini AI API key is not configured in server environment.'
+    };
+  }
+
+  if (!docChunks || docChunks.length === 0) {
+    return {
+      success: true,
+      status: 'NOT_FOUND',
+      answer: ''
+    };
+  }
+
+  const formattedDocContext = formatDocumentContext(docChunks);
+
+  const promptText = `You are the College Document Verification Assistant.
+Answer the user's question ONLY using the supplied official college document excerpts.
+
+STRICT GROUNDING & VERIFICATION RULES:
+1. If the excerpts contain enough information to directly answer the question:
+   - Provide a concise, clear, and accurate answer based ONLY on the supplied excerpts.
+   - Do NOT add outside knowledge, assumptions, or extrapolations.
+   - Do NOT invent missing details.
+   - Include relevant document title and page number citations in your answer.
+   - Set "status" to "FOUND".
+2. If the excerpts do NOT contain the answer or do not actually cover the requested topic:
+   - You MUST set "status" to "NOT_FOUND" and "answer" to "".
+   - A question MUST be considered NOT_FOUND when it merely shares general institutional, legal, administrative, or vehicular wording with the excerpts but asks about a subject that the excerpts do not cover.
+   - For example: A question about a private helicopter parking permit must be NOT_FOUND if the excerpts only discuss ordinary student motorized vehicle parking.
+
+${formattedDocContext}
+
+User Question: ${query}
+
+OUTPUT INSTRUCTION:
+Return ONLY a valid JSON object matching this schema (do NOT wrap in markdown backticks or add extra commentary):
+{
+  "status": "FOUND" | "NOT_FOUND",
+  "answer": "<grounded answer if FOUND, or empty string if NOT_FOUND>"
+}`;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const modelsToTry = config.gemini?.generationModels || ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+    let rawText = '';
+    let lastError = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: promptText
+        });
+        if (response && response.text) {
+          rawText = response.text;
+          break;
+        }
+      } catch (err) {
+        lastError = err;
+        console.warn(`[Gemini Document Grounding Notice]: Model ${modelName} failed: ${err.message}. Trying fallback...`);
+      }
+    }
+
+    if (!rawText) {
+      console.error('[Gemini Document Grounding Error]: All generation models failed:', lastError?.message || lastError);
+      return {
+        success: false,
+        isServiceError: true,
+        error: lastError?.message || 'All Gemini models failed'
+      };
+    }
+
+    const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+    try {
+      const parsed = JSON.parse(cleanJson);
+      if (parsed && typeof parsed === 'object') {
+        const status = String(parsed.status || '').trim().toUpperCase();
+        if (status === 'FOUND' && parsed.answer && typeof parsed.answer === 'string' && parsed.answer.trim().length > 0) {
+          return {
+            success: true,
+            status: 'FOUND',
+            answer: parsed.answer.trim()
+          };
+        }
+        if (status === 'NOT_FOUND') {
+          return {
+            success: true,
+            status: 'NOT_FOUND',
+            answer: ''
+          };
+        }
+      }
+    } catch (parseErr) {
+      if (cleanJson.toUpperCase().includes('NOT_FOUND')) {
+        return {
+          success: true,
+          status: 'NOT_FOUND',
+          answer: ''
+        };
+      }
+      console.warn('[Gemini Document Grounding Warning]: Failed to parse structured JSON response:', cleanJson);
+    }
+
+    // Default safe fallback if response could not be verified as FOUND
+    return {
+      success: true,
+      status: 'NOT_FOUND',
+      answer: ''
+    };
+
+  } catch (error) {
+    console.error('[Gemini Document Grounding Error]:', error.message || error);
+    return {
+      success: false,
+      isServiceError: true,
+      error: error.message || 'Gemini grounding verification failed'
+    };
+  }
+}
+
+
 function generateLocalFallbackStudyPlan(context, preferences) {
   const studentName = context?.student?.name || 'Alex Mercer';
   const subjects = context?.subjects || [];
