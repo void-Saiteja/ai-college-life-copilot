@@ -246,6 +246,7 @@ export default function AdminDashboard() {
   }
 
   const d = dashboardData || {};
+  const activeEmbeddingModel = documents[0]?.embeddingModel || (d.documents?.embeddingProvider ? d.documents.embeddingProvider.replace('Google Gemini ', '') : d.documents?.embeddingModel) || 'gemini-embedding-2';
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -826,7 +827,7 @@ export default function AdminDashboard() {
             <h3 style={{ fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
               <FileCheck style={{ width: '20px', height: '20px', color: '#34d399' }} /> College RAG Knowledge Base Governance
             </h3>
-            <span className="badge badge-emerald">Model: text-embedding-004 (768-dim)</span>
+            <span className="badge badge-emerald">Model: {activeEmbeddingModel} (768-dim)</span>
           </div>
 
           <div className="glass-card" style={{ padding: '0px', overflowX: 'auto' }}>
