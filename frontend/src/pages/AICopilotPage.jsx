@@ -56,19 +56,29 @@ export default function AICopilotPage() {
         message: userText
       });
 
-      if (res.data.success) {
+      if (res.data && res.data.success && res.data.data && res.data.data.assistantMessage) {
         const { sessionId, assistantMessage } = res.data.data;
-        if (!activeSessionId) {
+        if (!activeSessionId && sessionId) {
           setActiveSessionId(sessionId);
           fetchSessions();
         }
         setMessages(prev => [...prev, assistantMessage]);
+      } else {
+        const fallbackContent = res.data?.error || '⚠️ Unable to process chat request at this time. Please try again.';
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          sender: 'assistant',
+          content: typeof fallbackContent === 'string' ? fallbackContent : '⚠️ Unable to process chat request at this time. Please try again.'
+        }]);
       }
     } catch (err) {
+      const errMsg = err.response?.data?.error || err.message;
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         sender: 'assistant',
-        content: '⚠️ I encountered a temporary connection issue. Please check your network or try asking again.'
+        content: typeof errMsg === 'string' && !errMsg.includes('{')
+          ? `⚠️ ${errMsg}`
+          : '⚠️ I encountered a temporary connection issue. Please check your network or try asking again.'
       }]);
     } finally {
       setLoading(false);
@@ -165,10 +175,10 @@ export default function AICopilotPage() {
                 color: '#fff',
                 fontSize: '0.93rem',
                 lineHeight: '1.5',
-                whiteSpace: 'pre-line'
+                whiteSpace: 'pre-wrap'
               }}
             >
-              <div>{msg.content}</div>
+              <div>{typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)}</div>
 
               {msg.sources && msg.sources.length > 0 && (
                 <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.12)', fontSize: '0.8rem', color: '#c7d2fe' }}>

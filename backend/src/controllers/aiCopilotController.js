@@ -43,6 +43,31 @@ export const getSessionMessages = (req, res, next) => {
   }
 };
 
+export function isSimpleGreeting(text) {
+  if (!text || typeof text !== 'string') return false;
+  const cleaned = text.trim().toLowerCase().replace(/[!.,?]+$/, '').trim();
+  const greetingPatterns = [
+    'hi',
+    'hello',
+    'hey',
+    'hey there',
+    'hi there',
+    'hello there',
+    'good morning',
+    'good afternoon',
+    'good evening',
+    'greetings',
+    'sup',
+    'yo',
+    "what's up",
+    'whats up',
+    'hi copilot',
+    'hello copilot',
+    'hey copilot'
+  ];
+  return greetingPatterns.includes(cleaned);
+}
+
 export const postChatMessage = async (req, res, next) => {
   try {
     const studentId = req.user?.studentId;
@@ -94,13 +119,52 @@ export const postChatMessage = async (req, res, next) => {
     // 2. Fetch student academic context
     const studentCtx = buildStudentContext(studentId);
 
-    // 3. Retrieve relevant document chunks via semantic RAG vector search
-    const docChunks = await retrieveRelevantChunks(message.trim(), 3);
+    // 3. Short-circuit simple greetings without semantic vector search or Gemini API call
+    if (isSimpleGreeting(message.trim())) {
+      const studentName = studentCtx?.student?.name ? studentCtx.student.name.split(' ')[0] : 'there';
+      const greetingReply = `👋 Hello ${studentName}! I'm your AI College Life Copilot.
 
-    // 4. Retrieve recent conversation history for context continuity
+I can help you with:
+• **Academic Status**: Check your attendance percentages, bunk allowances, and GPA standing
+• **Deadlines & Exams**: Review upcoming assignments, project submissions, and exam schedules
+• **College Policies**: Answer questions about grading, leaves, attendance, and campus guidelines
+
+How can I help you today?`;
+
+      const assistantMsg = {
+        id: 'cm-' + Date.now() + '-a',
+        session_id: currentSessionId,
+        sender: 'assistant',
+        content: greetingReply,
+        sources: [],
+        created_at: new Date().toISOString()
+      };
+      db.chat_messages.push(assistantMsg);
+      saveDB(db);
+
+      return res.json({
+        success: true,
+        data: {
+          sessionId: currentSessionId,
+          userMessage: userMsg,
+          assistantMessage: assistantMsg
+        }
+      });
+    }
+
+    // 4. Retrieve relevant document chunks via semantic RAG vector search (safely wrapped)
+    let docChunks = [];
+    try {
+      docChunks = await retrieveRelevantChunks(message.trim(), 3);
+    } catch (ragErr) {
+      console.warn('[AI Copilot Semantic RAG]: Vector search error, proceeding with student context only:', ragErr.message);
+      docChunks = [];
+    }
+
+    // 5. Retrieve recent conversation history for context continuity
     const previousMessages = (db.chat_messages || []).filter(m => m.session_id === currentSessionId && m.id !== userMsg.id);
 
-    // 5. Generate LLM response from Google Gemini with student + document context
+    // 6. Generate LLM response from Google Gemini with student + document context
     const llmResult = await generateGeminiResponse({
       message: message.trim(),
       context: studentCtx,
@@ -117,7 +181,7 @@ export const postChatMessage = async (req, res, next) => {
       snippet: c.content
     })) : [];
 
-    // 6. Save assistant response to database
+    // 7. Save assistant response to database
     const assistantMsg = {
       id: 'cm-' + Date.now() + '-a',
       session_id: currentSessionId,
