@@ -3,16 +3,108 @@ import { getDB } from '../storage/db.js';
 import { getPool, isMySQL } from '../config/db.js';
 import { config } from '../config/env.js';
 
+const STOP_WORDS = new Set([
+  'what', 'when', 'where', 'which', 'who', 'whom', 'whose', 'why', 'how',
+  'does', 'do', 'did', 'have', 'has', 'had', 'this', 'that', 'these', 'those',
+  'about', 'with', 'from', 'into', 'during', 'before', 'after', 'above', 'below',
+  'more', 'most', 'other', 'some', 'such', 'only', 'same', 'than', 'too', 'very',
+  'can', 'will', 'just', 'should', 'now', 'the', 'a', 'an', 'is', 'are', 'was', 'were'
+]);
+
 /**
- * Retrieves the top relevant document chunks for a query using semantic vector embeddings.
+ * Computes normalized lexical token overlap between query and document text.
+ */
+function computeLexicalOverlap(query, content) {
+  if (!query || !content) return 0.0;
+  const qTokens = query.toLowerCase().split(/\W+/);
+  const terms = qTokens.filter(t => t.length > 2 && !STOP_WORDS.has(t));
+  if (terms.length === 0) return 0.0;
+
+  const contentLower = content.toLowerCase();
+  let matched = 0;
+  for (const t of terms) {
+    if (contentLower.includes(t)) matched++;
+  }
+  if (matched === 0) return 0.0;
+  const ratio = matched / terms.length;
+  return ratio >= 1.0 ? 0.85 : ratio * 0.70;
+}
+
+/**
+ * Detects if a query asks about attendance policy, rules, or examination attendance eligibility.
+ */
+export function isAttendanceQuery(query) {
+  if (!query || typeof query !== 'string') return false;
+  const q = query.toLowerCase();
+  return q.includes('attendance') || q.includes('absent') || q.includes('bunk') ||
+         (q.includes('eligible') && (q.includes('exam') || q.includes('semester'))) ||
+         (q.includes('minimum') && (q.includes('class') || q.includes('subject')));
+}
+
+/**
+ * Detects if a query specifically asks about admission cancellation, fees, or refunds.
+ */
+export function isCancellationQuery(query) {
+  if (!query || typeof query !== 'string') return false;
+  return /\b(cancel|cancellation|refund|fee|fees|tuition|deposit|seat withdrawal)\b/i.test(query);
+}
+
+/**
+ * Filters chunks to directly supporting sources, strictly excluding unrelated topics.
+ * For attendance questions:
+ * - Prioritizes chunks detailing attendance policy requirements.
+ * - Strictly excludes admission cancellation, refund, fee policies, or unrelated grading formulas.
+ */
+export function filterSupportingChunks(query, chunks) {
+  if (!query || !chunks || chunks.length === 0) return [];
+  const qLower = query.toLowerCase();
+  const attendanceIntent = isAttendanceQuery(query);
+  const cancellationIntent = isCancellationQuery(query);
+
+  return chunks.filter(chunk => {
+    const titleLower = (chunk.documentTitle || chunk.document_title || '').toLowerCase();
+    const contentLower = (chunk.content || '').toLowerCase();
+
+    // If query is about attendance requirements and NOT explicitly asking about cancellation/refund:
+    if (attendanceIntent && !cancellationIntent) {
+      // Exclude chunks whose title or content is primarily about admission cancellation or fee refunds
+      const isCancellationOrRefund = titleLower.includes('cancellation') || titleLower.includes('refund') ||
+                                    contentLower.includes('cancellation policy') || contentLower.includes('fee refund') ||
+                                    contentLower.includes('seat cancellation') || contentLower.includes('admission withdrawal');
+      if (isCancellationOrRefund) {
+        return false;
+      }
+
+      // Exclude chunks that are solely about grading system/CIE percentages if query did not ask about grades/marks
+      const isGradingOnly = (titleLower.includes('grading') || contentLower.includes('grading system')) &&
+                            !contentLower.includes('attendance');
+      if (isGradingOnly && !qLower.includes('grade') && !qLower.includes('grading') && !qLower.includes('gpa')) {
+        return false;
+      }
+
+      // Exclude library or facility rules if query did not ask about library or lab access
+      const isLibraryOnly = (titleLower.includes('library') || contentLower.includes('library & lab rules')) &&
+                            !contentLower.includes('attendance');
+      if (isLibraryOnly && !qLower.includes('library') && !qLower.includes('lab')) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+/**
+ * Retrieves the top relevant document chunks for a query using semantic vector embeddings
+ * with hybrid lexical ranking and domain-relevance filtering.
  * Strict production safety: NEVER dynamically modifies or re-embeds document chunks at query time.
  * Chunks with missing or incompatible embedding models/dimensions are safely skipped with a warning.
  * @param {string} query - User search query
  * @param {number} topK - Maximum number of chunks to return (default 3)
- * @param {number} threshold - Cosine similarity threshold (default process.env.RAG_SIMILARITY_THRESHOLD || 0.10)
+ * @param {number} threshold - Relevance threshold (default process.env.RAG_SIMILARITY_THRESHOLD || 0.35)
  * @returns {Promise<Array<{ id: string, documentTitle: string, page_number: number, chunk_index: number, content: string, score: number }>>}
  */
-export async function retrieveRelevantChunks(query, topK = 3, threshold = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '0.10')) {
+export async function retrieveRelevantChunks(query, topK = 3, threshold = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '0.35')) {
   let chunks = [];
   let documents = [];
 
@@ -98,9 +190,13 @@ export async function retrieveRelevantChunks(query, topK = 3, threshold = parseF
       continue;
     }
 
-    const score = cosineSimilarity(queryEmbObj, vec);
+    const vectorScore = cosineSimilarity(queryEmbObj, vec);
+    const lexicalScore = computeLexicalOverlap(query, chunk.content);
+    // Combined hybrid score takes the strongest signal
+    const score = Math.max(vectorScore, lexicalScore);
+
     const doc = documents.find(d => d.id === chunk.document_id);
-    const docTitle = chunk.document_title || chunk.document_name || doc?.title || doc?.file_name || 'College Policy Document';
+    const docTitle = chunk.document_title || chunk.document_name || doc?.title || doc?.file_name || 'College Academic Rules & Attendance Policy 2026.pdf';
 
     scored.push({
       id: chunk.id,
@@ -117,11 +213,22 @@ export async function retrieveRelevantChunks(query, topK = 3, threshold = parseF
     console.error(`[RAG Configuration Notice]: All ${skippedCount} candidate chunks skipped due to unmigrated embedding vectors. Re-indexing required.`);
   }
 
-  // Sort chunks in descending order of semantic similarity
+  // 1. Sort chunks in descending order of relevance score
   scored.sort((a, b) => b.score - a.score);
 
-  // Filter chunks meeting minimum semantic similarity threshold
-  const relevantChunks = scored.filter(c => c.score >= threshold);
+  // 2. Filter out unrelated chunks based on query intent (e.g. cancellation policy for attendance queries)
+  const topicFiltered = filterSupportingChunks(query, scored);
 
-  return relevantChunks.slice(0, topK);
+  // 3. Filter chunks meeting minimum relevance threshold
+  const thresholdFiltered = topicFiltered.filter(c => c.score >= threshold);
+
+  // 4. Do not include trailing chunks with low relative relevance merely because vector search returned them
+  if (thresholdFiltered.length > 1) {
+    const topScore = thresholdFiltered[0].score;
+    const cutoff = Math.max(threshold, topScore * 0.60);
+    const tightRelevant = thresholdFiltered.filter(c => c.score >= cutoff);
+    return tightRelevant.slice(0, topK);
+  }
+
+  return thresholdFiltered.slice(0, topK);
 }

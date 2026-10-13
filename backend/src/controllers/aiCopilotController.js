@@ -1,6 +1,6 @@
 import { getDB, saveDB } from '../storage/db.js';
 import { buildStudentContext } from '../services/contextService.js';
-import { retrieveRelevantChunks } from '../services/retrievalService.js';
+import { retrieveRelevantChunks, filterSupportingChunks } from '../services/retrievalService.js';
 import { generateGeminiResponse } from '../services/llmService.js';
 
 export const getChatSessions = (req, res, next) => {
@@ -174,8 +174,9 @@ How can I help you today?`;
 
     const aiReply = llmResult.reply;
 
-    // Build structured source metadata
-    const sources = docChunks && docChunks.length > 0 ? docChunks.map(c => ({
+    // Build structured source metadata (filtering to only directly supporting sources)
+    const supportingDocChunks = filterSupportingChunks(message.trim(), docChunks);
+    const sources = supportingDocChunks && supportingDocChunks.length > 0 ? supportingDocChunks.map(c => ({
       documentName: c.documentTitle,
       pageNumber: c.page_number,
       snippet: c.content
