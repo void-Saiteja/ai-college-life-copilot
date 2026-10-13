@@ -3,8 +3,8 @@ services:
   - type: web
     name: ai-college-copilot-backend
     runtime: docker
-    dockerfilePath: backend/Dockerfile
-    dockerContext: backend
+    dockerfilePath: backend-spring/Dockerfile
+    dockerContext: backend-spring
     plan: free
     region: oregon
     healthCheckPath: /api/health
@@ -25,7 +25,7 @@ services:
       - key: DB_PASSWORD
         sync: false
       - key: DB_NAME
-        value: defaultdb
+        value: ai_college_copilot
       - key: DB_SSL
         value: "true"
       - key: DB_SSL_REJECT_UNAUTHORIZED

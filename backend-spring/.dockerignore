@@ -1,0 +1,21 @@
+# Build output
+target/
+
+# Version control and IDEs
+.git/
+.gitignore
+.idea/
+.vscode/
+*.iml
+
+# Logs and local secrets
+logs/
+*.log
+local-secrets.properties
+*.local
+.env
+.env.*
+
+# Temporary / OS files
+.DS_Store
+Thumbs.db
