@@ -1,6 +1,6 @@
 import { getDB, saveDB } from '../storage/db.js';
 import { buildStudentContext } from '../services/contextService.js';
-import { retrieveRelevantChunks, filterSupportingChunks } from '../services/retrievalService.js';
+import { retrieveRelevantChunks, filterSupportingChunks, deduplicateSources } from '../services/retrievalService.js';
 import { generateGeminiResponse } from '../services/llmService.js';
 
 export const getChatSessions = (req, res, next) => {
@@ -106,6 +106,8 @@ export const postChatMessage = async (req, res, next) => {
       db.chat_sessions.unshift(newSession);
     }
 
+    const reqStartTime = Date.now();
+
     // 1. Save user message to database
     const userMsg = {
       id: 'cm-' + Date.now() + '-u',
@@ -117,7 +119,9 @@ export const postChatMessage = async (req, res, next) => {
     db.chat_messages.push(userMsg);
 
     // 2. Fetch student academic context
+    const tCtxStart = Date.now();
     const studentCtx = buildStudentContext(studentId);
+    const tCtxDuration = Date.now() - tCtxStart;
 
     // 3. Short-circuit simple greetings without semantic vector search or Gemini API call
     if (isSimpleGreeting(message.trim())) {
@@ -142,6 +146,9 @@ How can I help you today?`;
       db.chat_messages.push(assistantMsg);
       saveDB(db);
 
+      const totalGreetingMs = Date.now() - reqStartTime;
+      console.log(`[AI Copilot Perf]: FastPath=Greeting | total=${totalGreetingMs}ms | ctx=${tCtxDuration}ms | rag=0ms | llm=0ms`);
+
       return res.json({
         success: true,
         data: {
@@ -153,6 +160,7 @@ How can I help you today?`;
     }
 
     // 4. Retrieve relevant document chunks via semantic RAG vector search (safely wrapped)
+    const tRagStart = Date.now();
     let docChunks = [];
     try {
       docChunks = await retrieveRelevantChunks(message.trim(), 3);
@@ -161,28 +169,34 @@ How can I help you today?`;
       docChunks = [];
     }
 
+    // Filter and deduplicate supporting chunks BEFORE sending to LLM
+    const supportingDocChunks = deduplicateSources(filterSupportingChunks(message.trim(), docChunks));
+    const tRagDuration = Date.now() - tRagStart;
+
     // 5. Retrieve recent conversation history for context continuity
     const previousMessages = (db.chat_messages || []).filter(m => m.session_id === currentSessionId && m.id !== userMsg.id);
 
     // 6. Generate LLM response from Google Gemini with student + document context
+    const tLlmStart = Date.now();
     const llmResult = await generateGeminiResponse({
       message: message.trim(),
       context: studentCtx,
-      docChunks,
+      docChunks: supportingDocChunks,
       history: previousMessages
     });
+    const tLlmDuration = Date.now() - tLlmStart;
 
     const aiReply = llmResult.reply;
 
-    // Build structured source metadata (filtering to only directly supporting sources)
-    const supportingDocChunks = filterSupportingChunks(message.trim(), docChunks);
+    // Build structured source metadata (using only directly supporting and deduplicated sources)
     const sources = supportingDocChunks && supportingDocChunks.length > 0 ? supportingDocChunks.map(c => ({
-      documentName: c.documentTitle,
-      pageNumber: c.page_number,
+      documentName: c.documentTitle || c.document_title || 'Official Document',
+      pageNumber: c.page_number || 1,
       snippet: c.content
     })) : [];
 
     // 7. Save assistant response to database
+    const tSaveStart = Date.now();
     const assistantMsg = {
       id: 'cm-' + Date.now() + '-a',
       session_id: currentSessionId,
@@ -194,6 +208,10 @@ How can I help you today?`;
     db.chat_messages.push(assistantMsg);
 
     saveDB(db);
+    const tSaveDuration = Date.now() - tSaveStart;
+
+    const totalDuration = Date.now() - reqStartTime;
+    console.log(`[AI Copilot Perf]: total=${totalDuration}ms | ctx=${tCtxDuration}ms | rag=${tRagDuration}ms | llm=${tLlmDuration}ms | persist=${tSaveDuration}ms | isFallback=${Boolean(llmResult.isFallback)}`);
 
     res.json({
       success: true,

@@ -88,10 +88,36 @@ export function filterSupportingChunks(query, chunks) {
       if (isLibraryOnly && !qLower.includes('library') && !qLower.includes('lab')) {
         return false;
       }
+
+      // Exclude scholarship or financial aid rules if query did not ask about scholarships/aid
+      const isScholarshipOnly = (titleLower.includes('scholarship') || contentLower.includes('scholarship') || contentLower.includes('financial aid')) &&
+                                !contentLower.includes('attendance');
+      if (isScholarshipOnly && !qLower.includes('scholarship') && !qLower.includes('aid')) {
+        return false;
+      }
     }
 
     return true;
   });
+}
+
+/**
+ * Deduplicates retrieved chunks by document title and page number.
+ */
+export function deduplicateSources(chunks = []) {
+  if (!chunks || !Array.isArray(chunks)) return [];
+  const seen = new Set();
+  const deduped = [];
+  for (const chunk of chunks) {
+    const docName = chunk.documentTitle || chunk.document_title || chunk.documentName || 'Official Document';
+    const pageNum = chunk.page_number || chunk.pageNumber || 1;
+    const key = `${docName.trim().toLowerCase()}:::${pageNum}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(chunk);
+    }
+  }
+  return deduped;
 }
 
 /**
@@ -223,12 +249,14 @@ export async function retrieveRelevantChunks(query, topK = 3, threshold = parseF
   const thresholdFiltered = topicFiltered.filter(c => c.score >= threshold);
 
   // 4. Do not include trailing chunks with low relative relevance merely because vector search returned them
+  let finalChunks = thresholdFiltered;
   if (thresholdFiltered.length > 1) {
     const topScore = thresholdFiltered[0].score;
     const cutoff = Math.max(threshold, topScore * 0.60);
-    const tightRelevant = thresholdFiltered.filter(c => c.score >= cutoff);
-    return tightRelevant.slice(0, topK);
+    finalChunks = thresholdFiltered.filter(c => c.score >= cutoff);
   }
 
-  return thresholdFiltered.slice(0, topK);
+  // 5. Deduplicate sources by document title and page number
+  const uniqueChunks = deduplicateSources(finalChunks);
+  return uniqueChunks.slice(0, topK);
 }

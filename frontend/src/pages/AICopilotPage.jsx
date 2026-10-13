@@ -41,9 +41,9 @@ export default function AICopilotPage() {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!inputMsg.trim()) return;
+    if (loading || !inputMsg.trim()) return;
 
-    const userText = inputMsg;
+    const userText = inputMsg.trim();
     const tempUserMsg = { id: Date.now().toString(), sender: 'user', content: userText };
     
     setMessages(prev => [...prev, tempUserMsg]);
@@ -54,6 +54,8 @@ export default function AICopilotPage() {
       const res = await api.post('/chat/chat', {
         sessionId: activeSessionId,
         message: userText
+      }, {
+        timeout: 25000 // Bounded 25-second frontend timeout
       });
 
       if (res.data && res.data.success && res.data.data && res.data.data.assistantMessage) {
@@ -72,13 +74,21 @@ export default function AICopilotPage() {
         }]);
       }
     } catch (err) {
-      const errMsg = err.response?.data?.error || err.message;
+      let userFacingError = '⚠️ I encountered a temporary connection issue. Please check your network or try asking again.';
+      if (err.code === 'ECONNABORTED' || err.message?.toLowerCase().includes('timeout')) {
+        userFacingError = '⚠️ The request timed out. Academic Copilot is currently taking longer than expected under high server load. Please try asking again.';
+      } else if (err.response?.status === 401) {
+        userFacingError = '⚠️ Your session has expired. Please sign in again to continue chatting.';
+      } else if (err.response?.status === 403) {
+        userFacingError = '⚠️ Access denied: You do not have permission to access this chat conversation.';
+      } else if (err.response?.data?.error && typeof err.response.data.error === 'string' && !err.response.data.error.includes('{')) {
+        userFacingError = `⚠️ ${err.response.data.error}`;
+      }
+
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         sender: 'assistant',
-        content: typeof errMsg === 'string' && !errMsg.includes('{')
-          ? `⚠️ ${errMsg}`
-          : '⚠️ I encountered a temporary connection issue. Please check your network or try asking again.'
+        content: userFacingError
       }]);
     } finally {
       setLoading(false);
